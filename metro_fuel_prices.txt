@@ -1,0 +1,5 @@
+City	Petrol (₹/L)	Diesel (₹/L)
+Delhi	₹102.12	₹102.12
+Mumbai	₹111.21	₹111.21
+Kolkata	₹113.51	₹113.51
+Chennai	₹107.77	₹107.74
