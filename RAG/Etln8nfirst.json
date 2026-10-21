@@ -1,0 +1,188 @@
+{
+  "name": "Etln8nfirst",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "File_Upload",
+        "formDescription": "upload the student data",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "File_Upload",
+              "fieldType": "file"
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -656,
+        -80
+      ],
+      "id": "8d51fdc7-4740-4f32-96b8-b07d37bb2680",
+      "name": "CSV_Upload",
+      "webhookId": "572cd653-242d-4b06-b315-e5945a37e15f"
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "File_Upload",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -384,
+        -96
+      ],
+      "id": "a5448ee6-2095-4417-bd8b-1f941f4c330e",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify($json) }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": []
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -128,
+        -80
+      ],
+      "id": "e519a9cc-ac4f-4148-9719-ade694194d05",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -240,
+        128
+      ],
+      "id": "22571919-d543-44ab-b44c-4fb7c066e375",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "uliltxLJRLRQXhV0",
+          "name": "OpenAI account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst items = $input.all();\n\nconst validRecords = [];\nconst invalidRecords = [];\n\nfor (const item of items) {\n  const rawText = item.json.text || \"\";\n\n  // Extract employee fields from the LLM response\n  const getField = (label) => {\n    const regex = new RegExp(\n      `(?:^|\\\\n)\\\\s*[-*]?\\\\s*${label}\\\\s*:\\\\s*(.*)`,\n      \"i\"\n    );\n\n    const match = rawText.match(regex);\n    return match ? match[1].trim() : \"\";\n  };\n\n  const employee = {\n    employee_id: getField(\"Employee ID\"),\n    full_name: getField(\"Full Name\"),\n    email: getField(\"Email\").toLowerCase(),\n    phone: getField(\"Phone\"),\n    department: getField(\"Department\"),\n    job_title: getField(\"Job Title\"),\n    salary_inr: getField(\"Salary \\\\(INR\\\\)\"),\n    joining_date: getField(\"Joining Date\")\n  };\n\n  const errors = [];\n\n  // Clean text fields\n  for (const key of [\n    \"employee_id\",\n    \"full_name\",\n    \"department\",\n    \"job_title\"\n  ]) {\n    employee[key] = employee[key].replace(/\\s+/g, \" \").trim();\n  }\n\n  // Clean email\n  employee.email = employee.email.replace(/\\s+/g, \"\");\n\n  // Clean phone: preserve digits and optional country code\n  employee.phone = employee.phone.replace(/[\\s()-]/g, \"\");\n\n  // Clean salary: remove currency symbols and commas\n  const salaryText = employee.salary_inr.replace(/[₹,\\s]/g, \"\");\n  const salary = Number(salaryText);\n\n  employee.salary_inr = salaryText === \"\" ? null : salary;\n\n  // Validate required fields\n  if (!employee.employee_id) errors.push(\"Missing employee ID\");\n  if (!employee.full_name) errors.push(\"Missing full name\");\n  if (!employee.department) errors.push(\"Missing department\");\n  if (!employee.job_title) errors.push(\"Missing job title\");\n\n  // Validate email\n  if (\n    !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(employee.email)\n  ) {\n    errors.push(\"Invalid email\");\n  }\n\n  // Validate Indian mobile number: 10 digits, optionally +91\n  if (!/^(?:\\+91)?[6-9]\\d{9}$/.test(employee.phone)) {\n    errors.push(\"Invalid Indian mobile number\");\n  }\n\n  // Validate salary\n  if (\n    employee.salary_inr === null ||\n    !Number.isFinite(salary) ||\n    salary <= 0\n  ) {\n    errors.push(\"Invalid salary\");\n  }\n\n  // Normalize joining date to YYYY-MM-DD\n  const dateMatch = employee.joining_date.match(\n    /^(\\d{1,2})\\s+([A-Za-z]+)\\s+(\\d{4})$/\n  );\n\n  if (dateMatch) {\n    const months = {\n      january: \"01\", february: \"02\", march: \"03\",\n      april: \"04\", may: \"05\", june: \"06\",\n      july: \"07\", august: \"08\", september: \"09\",\n      october: \"10\", november: \"11\", december: \"12\"\n    };\n\n    const day = dateMatch[1].padStart(2, \"0\");\n    const month = months[dateMatch[2].toLowerCase()];\n    const year = dateMatch[3];\n\n    if (month) {\n      employee.joining_date = `${year}-${month}-${day}`;\n    } else {\n      errors.push(\"Invalid joining date\");\n    }\n  } else if (\n    !/^\\d{4}-\\d{2}-\\d{2}$/.test(employee.joining_date)\n  ) {\n    errors.push(\"Invalid joining date\");\n  }\n\n  employee.status = errors.length === 0 ? \"valid\" : \"invalid\";\n  employee.errors = errors;\n\n  if (errors.length === 0) {\n    validRecords.push({ json: employee });\n  } else {\n    invalidRecords.push({ json: employee });\n  }\n}\n\n// Output both groups in a single item\nreturn [{\n  json: {\n    total_records: items.length,\n    valid_count: validRecords.length,\n    invalid_count: invalidRecords.length,\n    valid_records: validRecords.map(item => item.json),\n    invalid_records: invalidRecords.map(item => item.json)\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -80
+      ],
+      "id": "45ae5b36-a8a1-499a-88e5-3e29a8957c39",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        368,
+        -80
+      ],
+      "id": "1733c9b9-6414-418d-be30-8ed75742d425",
+      "name": "Convert to File"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "CSV_Upload": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "191d7228-8052-407c-aa53-f0ccbc00ebfa",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "597c905018e403e1580d376b74b543c78dd4564cc10eca1cc0b79970908696eb"
+  },
+  "nodeGroups": [],
+  "id": "iyRMrlgtuTVdIF8q",
+  "tags": []
+}
